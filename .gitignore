@@ -1,0 +1,4 @@
+.env
+*.log
+n8n_data/
+postgres_data/

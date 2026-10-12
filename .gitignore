@@ -1,4 +1,27 @@
+# Secrets - Never Commit These!
 .env
-*.log
+*.pem
+*.key
+
+# Editor backups - Ensures clean repository
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Docker volumes
 n8n_data/
 postgres_data/
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*pyc
+.venv/
+venv/
+
+# Node
+node_modules/

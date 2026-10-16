@@ -1,5 +1,7 @@
 # n8n Issue Triage Automation
 
+![n8n issue triage workflow](docs/workflow.png)
+
 An n8n workflow that receives GitHub issue text via webhook, classifies it with an LLM (Groq / Llama 3), and routes high-priority to Discord while logging everything else to Postgres.
 
 > **Status:** in progress. Workflow nodes are being built incrementally;

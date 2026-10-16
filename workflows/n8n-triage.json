@@ -1,0 +1,396 @@
+{
+  "name": "n8n-triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "676b8600-5a4b-48fe-9151-f3c4f95c584b",
+      "name": "Webhook",
+      "webhookId": "69ba42e7-554b-49e5-b6e2-032e5ca99f0b"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(item => {\n  const payload = item.json.body || item.json;\n  return {\n    json: {\n      issueTitle: payload.title || 'Untitled',\n      issueBody: payload.body || '',\n      issueUrl: payload.url || '',\n      promptText: `Title: ${payload.title}\\n\\nBody: ${payload.body}`\n    }\n  }\n})"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "3e8f3d4e-a89d-4e71-97e7-914f05af6f30",
+      "name": "Extract Issue Text"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "b2ac8560-9a59-436e-9953-e80f9e689729",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X6fTqt24zgWtxvyE",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nif (!item.promptText) {\n  throw new Error(\n    'promptText missing. Input keys: ' + Object.keys(item).join(', ')\n  );\n}\n\nconst requestBody = {\n  model: \"openai/gpt-oss-20b\",\n  messages: [\n    {\n      role: \"system\",\n      content: \"You are an issue triage classifier. Return ONLY valid JSON with exactly these fields: category (bug|feature|question), priority (high|medium|low), suggestedAction (one sentence). No markdown, no backticks, no explanation.\"\n    },\n    {\n      role: \"user\",\n      content: item.promptText\n    }\n  ],\n  temperature: 0.1,\n  response_format: { type: \"json_object\" }\n};\nreturn [{ json: { requestBody } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "6a21f7cb-05ed-4b80-8ca5-288daac03fb3",
+      "name": "Build Groq Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(item => {\n  const raw = item.json.choices?.[0]?.message?.content;\n\n  if (!raw) {\n    return {\n      json: {\n        category: 'unknown',\n        priority: 'medium',\n        suggestedAction: 'Classification returned no content — manual review required',\n        parseError: 'empty content',\n        originalTitle: $('Extract Issue Text').item.json.issueTitle,\n        originalUrl: $('Extract Issue Text').item.json.issueUrl\n      }\n    };\n  }\n\n  // Strip markdown fences if the model added them despite instructions\n  const cleaned = raw.trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/\\s*```$/, '');\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return {\n      json: {\n        category: 'unknown',\n        priority: 'medium',\n        suggestedAction: 'Classification parse failed — manual review required',\n        parseError: e.message,\n        rawResponse: raw,\n        originalTitle: $('Extract Issue Text').item.json.issueTitle,\n        originalUrl: $('Extract Issue Text').item.json.issueUrl\n      }\n    };\n  }\n\n  return {\n    json: {\n      category: parsed.category || 'unknown',\n      priority: parsed.priority || 'medium',\n      suggestedAction: parsed.suggestedAction || 'Review manually',\n      originalTitle: $('Extract Issue Text').item.json.issueTitle,\n      originalUrl: $('Extract Issue Text').item.json.issueUrl\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        144
+      ],
+      "id": "c3d9f1ba-c8d0-4224-9909-912e8c9f722f",
+      "name": "Parser Groq Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3fb498d1-3609-47f7-a3f6-884e05fb5407",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "zzz",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1264,
+        144
+      ],
+      "id": "e3888710-7ccb-420b-863e-a0ec6adf6cc5",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "issue_triage",
+          "mode": "list",
+          "cachedResultName": "issue_triage"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "category": "={{ $json.category }}",
+            "priority": "={{ $json.priority }}",
+            "issue_title": "={{ $json.originalTitle }}",
+            "suggested_action": "={{ $json.suggestedAction }}",
+            "issue_url": "={{ $json.originalUrl }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "classified_at",
+              "displayName": "classified_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "suggested_action",
+              "displayName": "suggested_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issue_title",
+              "displayName": "issue_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issue_url",
+              "displayName": "issue_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1488,
+        240
+      ],
+      "id": "02763ee6-51db-422a-8e88-33893b426615",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "rBPsp2rBp19ieONg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=🚨 **High Priority {{ $json.category }}**\n**Title:** {{ $json.originalTitle }}\n**Suggested Action:** {{ $json.suggestedAction }}\n**Link:** {{ $json.originalUrl }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        48
+      ],
+      "id": "e794941b-a7ca-400c-b520-3d8a6d6b4dd0",
+      "name": "Discord Triage",
+      "webhookId": "bf96389b-9fc9-43fd-a637-6701d765dd2d",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "fJk6iQenj3644gKq",
+          "name": "Discord Webhook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"classified\",\n  \"category\": $('Parser Groq Response').item.json.category,\n  \"priority\": $('Parser Groq Response').item.json.priority,\n  \"suggestedAction\": $('Parser Groq Response').item.json.suggestedAction,\n  \"routedTo\": \"discord\"\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1712,
+        96
+      ],
+      "id": "82b15a29-a0a8-40b8-b587-423a8b23134b",
+      "name": "Respond (High Priority)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ \n  {\n    \"status\": \"classified\",\n    \"category\": $('Parser Groq Response').item.json.category,\n    \"priority\": $('Parser Groq Response').item.json.priority,\n    \"suggestedAction\": $('Parser Groq Response').item.json.suggestedAction,\n    \"routedTo\": \"database\"\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1712,
+        240
+      ],
+      "id": "72c2a01d-38f1-4cb3-af90-9f2257540dca",
+      "name": "Respond (Logged)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Issue Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Issue Text": {
+      "main": [
+        [
+          {
+            "node": "Build Groq Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Parser Groq Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Groq Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser Groq Response": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Discord Triage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord Triage": {
+      "main": [
+        [
+          {
+            "node": "Respond (High Priority)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Respond (Logged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8f14e0ec-6400-4475-9800-c5753ddc3e2d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d9ce3270f8e8b7886f11dc8fcde283e57bea5a757a7f028231ce8768da65f138"
+  },
+  "nodeGroups": [],
+  "id": "00kAjwxEmTxI6VUp",
+  "tags": []
+}

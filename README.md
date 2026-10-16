@@ -4,8 +4,7 @@
 
 An n8n workflow that receives GitHub issue text via webhook, classifies it with an LLM (Groq / Llama 3), and routes high-priority to Discord while logging everything else to Postgres.
 
-> **Status:** in progress. Workflow nodes are being built incrementally;
-> sections marked TODO are pending.
+> **Status:** Complete.
 
 ## Problem
 
@@ -67,8 +66,8 @@ Webhook JSON → normalized `{issueTitle, issueBody, promptText}` → Groq API e
 ### Failure paths
 - **Groq call fails** - HTTP Request node retries 3x with 2s backoff.
 - **Groq returns non-JSON** - Code node catches `JSON.parse` errors and emits a safe `{category: "unknown", priority: "medium"}` item with the raw response attached for debugging.
-- **Webhook payload issing fields** - TODO: add validation and a 400 response.
-- **Discord unreachable** - TODO: decide whether to retry or log-and-contine.
+- **Webhook payload Missing fields** - Next iteration: add validation and a 400 response.
+- **Discord unreachable** - Next iteration: decide whether to retry or log-and-continue.
 
 ## Node Breakdown
 | Node | Type | Purpose | Why this node |
@@ -147,6 +146,10 @@ curl -X POST http://localhost:5678/webhook/github-triage \
 - **Single provider for the LLM.** If Groq is down, classification stops. I'd add a fallback provider (OpenAI, Anthropic) behind the same prompt.
 - **No tests for the Code nodes.** n8n doesn't have first-class unit testing. I'd extract the parsing logic into a standalone module and test it with a JS test runner.
 - **Workflow JSON doesn't diff well in Git.** Every save produces a large noisy JSON file. For a team, I'd export the workflow as code and keep the canonical version outside n8n.
+
+### Learning Outcomes
+Building this taught me where n8n's abstraction helps (integrations, routing, retries) and where it gets in the way (structured output parsing with Groq, testing Code nodes). The hybrid approach - n8n for orchestration, Python for heavy processing - is where I'd land in production.
+
 
 ---
 

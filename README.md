@@ -2,13 +2,13 @@
 
 ![n8n issue triage workflow](docs/workflow.png)
 
-An n8n workflow that receives GitHub issue text via webhook, classifies it with an LLM (Groq / Llama 3), and routes high-priority to Discord while logging everything else to Postgres.
+An n8n workflow that receives GitHub issue text via webhook, classifies it with an LLM (Groq / Llama 3), and routes high-priority items to Discord while logging everything else to Postgres.
 
 > **Status:** Complete.
 
 ## Problem
 
-Manual issue triage is slow and inconsistent. High-priority bugs get buried under lower-value questions and feature requests. The goal is to classify every incoming issues the moment it arrives, route urgent ones to a channel where they'll be seen, and keep a searchable log of everything for later analysis.
+Manual issue triage is slow and inconsistent. High-priority bugs get buried under lower-value questions and feature requests. The goal is to classify every incoming issue the moment it arrives, route urgent ones to a channel where they'll be seen, and keep a searchable log of everything for later analysis.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ Webhook JSON → normalized `{issueTitle, issueBody, promptText}` → Groq API e
 ### Failure paths
 - **Groq call fails** - HTTP Request node retries 3x with 2s backoff.
 - **Groq returns non-JSON** - Code node catches `JSON.parse` errors and emits a safe `{category: "unknown", priority: "medium"}` item with the raw response attached for debugging.
-- **Webhook payload Missing fields** - Next iteration: add validation and a 400 response.
+- **Webhook payload missing fields** - Next iteration: add validation and a 400 response.
 - **Discord unreachable** - Next iteration: decide whether to retry or log-and-continue.
 
 ## Node Breakdown
@@ -97,7 +97,7 @@ The official n8n Docker Compose guide ships a much larger stack: `sandbox-certs`
 
 This workflow calls the Groq API directly via HTTP Request nodes. It does not let n8n Assistant write and execute code. So the sandbox services add resource usage - including a privileged container and mTLS setup - without adding capability for this use case. On a constrained dev machine, the minimal stack is the deliberate choice.
 
-For a workflow that needed agentic AI with code execution, I would add the sandbox services or configure Daytona (the production sandbox provier n8n recommends).
+For a workflow that needed agentic AI with code execution, I would add the sandbox services or configure Daytona (the production sandbox provider n8n recommends).
 
 ### Why Postgres for logging
 
@@ -108,7 +108,7 @@ Three reasons over Google Sheets or a file:
 
 ### Why the HTTP Request node for Groq
 
-n8n has LangChain-based AI nodes, but the HTTP Request node gives full control over the request body. Groq's `/chat/completions` endpoint is OpenAI-compatible, so the request is a straightforward POST. It also demonstrates understanding of the API contract rather than a pre-build abstraction - useful for a portfolio.
+n8n has LangChain-based AI nodes, but the HTTP Request node gives full control over the request body. Groq's `/chat/completions` endpoint is OpenAI-compatible, so the request is a straightforward POST. It also demonstrates understanding of the API contract rather than a pre-built abstraction - useful for a portfolio.
 
 Note: n8n's built-in Structured Output Parser has a known incompatibility with Groq (Groq wraps responses in a hidden tool call that the parser can't unpack, causing a 400). Parsing the JSON manually in a Code node avoids this and gives control over cleaning markdown fences.
 
@@ -120,22 +120,24 @@ The LLM does the fuzzy work: classifying free-text into a small set of categorie
 
 ### Prerequisites
 - Docker Engine and Docker Compose v2
-- A Groq API API key
+- A Groq API key
 - A Discord webhook URL
 
 ### Run it
 
 ```bash
-git clone https://github.com/aetheric0/n8n-triage.git
+git clone https://github.com/aetheric0/n8n-issue-triage.git
 cd n8n-triage
 cp .env.example .env
 # edit .env with your POSTGRES_PASSWORD
 docker compose up -d
+```
 
 Open `http://localhost:5678`, create an owner account, and import the workflow from `workflows/issue-triage.json`.
 
 ### Test it
-```
+
+```bash
 curl -X POST http://localhost:5678/webhook/github-triage \
      -H "Content-Type: application/json" \
      -d '{"title": "App crashes on login", "body":"Steps: 1. Open 2. Enter creds 3. Freeze"}'
